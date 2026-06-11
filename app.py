@@ -30,11 +30,10 @@ def init_db():
 def clean_text(text):
     if not text:
         return ""
-    # পিডিএফের ভাঙা ফন্ট ও এনকোডিং ঠিক করার জন্য ম্যাপিং
     replacements = {
         "Ïভাটার": "ভোটার", "িপতা": "পিতা", "িঠকানা": "ঠিকানা",
         "Ïপশা": "পেশা", "জĥ তািরخ": "জন্ম তারিখ", "জĥ তািরখ": "জন্ম তারিখ",
-        "জহ তািরখ": "জন্ম তারিখ", "গৃিহনী": "गृहिनी", "গৃিহণী": "গৃহিনী", "Řิมক": "শ্রমিক", "Řিমক,": "শ্রমিক,",
+        "জহ তািরখ": "জন্ম তারিখ", "গৃিহনী": "গৃহিনী", "গৃিহণী": "গৃহিনী", "Řิมক": "শ্রমিক", "Řิมক,": "শ্রমিক,",
         "চÿåাম": "চট্টগ্রাম", " মধË": "মধ্য", "এওিচয়া": "এওচিয়া",
         "সাতকািনয়া": "সাতকানিয়া", "ÏমাছাŇৎ": "মোসাম্মৎ", "ÏমাহাŇদ": "মোহাম্মদ",
         "Ïবগম": "বেগম", "আিńয়া": "আছিয়া", "হািববুর": "হাবিবুর", "ſƁĨাহার": "জেবুন্নাহার",
@@ -42,8 +41,6 @@ def clean_text(text):
     }
     for broken, correct in replacements.items():
         text = text.replace(broken, correct)
-    
-    # অপ্রয়োজনীয় ক্যারেক্টার ও অতিরিক্ত স্পেস ক্লিন করা
     text = re.sub(r'[^\w\s\d/.,:-]', '', text)
     return text.strip()
 
@@ -59,13 +56,11 @@ def process_pdf(uploaded_file):
         if text:
             full_text += text + "\n"
             
-    # ভোটার এলাকা বের করা
     area_match = re.search(r"(?:ভোটার এলাকার নাম|এলাকার নাম):\s*([^\n\r]+)", full_text)
     area_name = area_match.group(1).strip() if area_match else "মধ্য এওচিয়া"
     area_name = clean_text(area_name)
 
-    # ভোটারদের ব্লক খোঁজার জন্য শক্তিশালী রেগুলার এক্সপ্রেশন (বাংলা ও ভাঙা দুই ফন্টই রিড করবে)
-    pattern = r"(\d{4})\.\s*নাম:\s*(.*?)\s*(?:ভোটার নং|Ïভাটার নং):\s*(\d+)\s*(?:পিতা|িপতা):\s*(.*?)\s*(?:মাতা|ماتا):\s*(.*?)\s*(?:পেশা|Ïপশা):\s*(.*?),\s*(?:জন্ম তারিখ|জĥ তািরখ|জĥ তািরخ):\s*([\d/]+)\s*(?:ঠিকানা|িঠকানা):\s*(.*?)(?=\s*\d{4}\.\s*নাম:|$)"
+    pattern = r"(\d{4})\.\s*নাম:\s*(.*?)\s*(?:ভোটার নং|Ïভাটার নং):\s*(\d+)\s*(?:পিতা|িপতা):\s*(.*?)\s*(?:মাতা|ماتا):\s*(.*?)\s*(?:পেশা|Ïপشا):\s*(.*?),\s*(?:জন্ম তারিখ|জĥ তািরখ|জĥ তািরخ):\s*([\d/]+)\s*(?:ঠিকানা|িঠকানা):\s*(.*?)(?=\s*\d{4}\.\s*নাম:|$)"
     matches = re.findall(pattern, full_text, re.DOTALL)
 
     voters_added = 0
@@ -79,7 +74,6 @@ def process_pdf(uploaded_file):
         dob = match[6].strip()
         address = clean_text(match[7])
         
-        # ডুপ্লিকেট চেক
         cursor.execute("SELECT id FROM voters WHERE voter_no = ?", (voter_no,))
         if not cursor.fetchone():
             cursor.execute('''
@@ -99,7 +93,6 @@ init_db()
 st.title("🎯 ভোটার ডিরেক্টরি ম্যানেজার ও স্মার্ট সার্চ")
 st.write("বামপাশের সাইডবার থেকে আপনার ভোটার তালিকার পিডিএফ ফাইলটি আপলোড করুন।")
 
-# সাইডবার কন্ট্রোল
 with st.sidebar:
     st.header("📁 পিডিএফ ডাটা ইনপুট")
     uploaded_files = st.file_uploader("একাধিক ভোটার তালিকা (PDF) এখানে ড্রপ করুন", type=["pdf"], accept_multiple_files=True)
@@ -144,7 +137,6 @@ with col4:
     search_prof = st.text_input("পেশা")
     search_dob = st.text_input("জন্ম তারিখ")
 
-# ডাটাবেজ কোয়েরি
 conn = sqlite3.connect(DB_NAME)
 query = "SELECT serial_no, name, voter_no, father_name, mother_name, profession, dob, address, area_name, pdf_filename FROM voters WHERE 1=1"
 params = []
@@ -177,7 +169,7 @@ if not df.empty:
         mime='text/csv',
     )
     
-    st.write("### 🪪 ভোটার আইডিカードসমূহ:")
+    st.write("### 🪪 ভোটার আইডি কার্ডসমূহ:")
     
     for i in range(0, len(df), 2):
         card_cols = st.columns(2)
@@ -185,18 +177,20 @@ if not df.empty:
             if i + idx < len(df):
                 row = df.iloc[i + idx]
                 with col:
+                    # এখানে Card Background = #FFFFFF (White) এবং Text Color = #000000 (Black) করা হয়েছে
                     st.markdown(f"""
-                    <div style="border: 1px solid #4CAF50; border-radius: 8px; padding: 15px; margin-bottom: 15px; background-color: #fcfcfc; box-shadow: 1px 1px 4px rgba(0,0,0,0.05);">
-                        <span style="background-color: #4CAF50; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; float: right;">সিরিয়াল: {row['serial_no']}</span>
-                        <h4 style="color: #2E7D32; margin-top: 0; margin-bottom: 10px;">🗳️ ভোটার তথ্য কার্ড</h4>
-                        <p style="margin: 3px 0;"><b>নাম:</b> {row['name']}</p>
-                        <p style="margin: 3px 0; color: #C62828;"><b>ভোটার নং:</b> {row['voter_no']}</p>
-                        <p style="margin: 3px 0;"><b>পিতার নাম:</b> {row['father_name']}</p>
-                        <p style="margin: 3px 0;"><b>মাতার নাম:</b> {row['mother_name']}</p>
-                        <p style="margin: 3px 0;"><b>পেশা:</b> {row['profession']} | <b>জন্ম তারিখ:</b> {row['dob']}</p>
-                        <p style="margin: 3px 0; font-size: 0.9em; color: #424242;"><b>ঠিকানা:</b> {row['address']}</p>
-                        <hr style="margin: 8px 0; border: 0; border-top: 1px solid #eee;">
-                        <p style="margin: 0; font-size: 0.75em; color: #757575;">📂 <b>উৎস ফাইল:</b> {row['pdf_filename']}</p>
+                    <div style="border: 2px solid #000000; border-radius: 8px; padding: 15px; margin-bottom: 15px; background-color: #FFFFFF; box-shadow: 2px 2px 5px rgba(0,0,0,0.15);">
+                        <span style="background-color: #000000; color: #FFFFFF; padding: 3px 10px; border-radius: 4px; font-size: 0.85em; float: right; font-weight: bold;">সিরিয়াল: {row['serial_no']}</span>
+                        <h4 style="color: #000000; margin-top: 0; margin-bottom: 12px; font-weight: bold; border-bottom: 2px solid #000000; padding-bottom: 5px;">🗳️ ভোটার তথ্য কার্ড</h4>
+                        <p style="margin: 5px 0; color: #000000; font-size: 1.05em;"><b>নাম:</b> {row['name']}</p>
+                        <p style="margin: 5px 0; color: #000000; font-size: 1.05em;"><b>ভোটার নং:</b> <span style="font-weight: bold; text-decoration: underline;">{row['voter_no']}</span></p>
+                        <p style="margin: 5px 0; color: #000000;"><b>পিতার নাম:</b> {row['father_name']}</p>
+                        <p style="margin: 5px 0; color: #000000;"><b>মাতার নাম:</b> {row['mother_name']}</p>
+                        <p style="margin: 5px 0; color: #000000;"><b>পেশা:</b> {row['profession']} | <b>জন্ম তারিখ:</b> {row['dob']}</p>
+                        <p style="margin: 5px 0; color: #000000; font-size: 0.95em;"><b>ঠিকানা:</b> {row['address']}</p>
+                        <hr style="margin: 10px 0; border: 0; border-top: 1px solid #000000;">
+                        <p style="margin: 0; font-size: 0.8em; color: #000000;">📂 <b>উৎস ফাইল:</b> {row['pdf_filename']}</p>
+                        <p style="margin: 2px 0 0 0; font-size: 0.85em; color: #000000; text-align: right; font-weight: bold;">📍 এলাকা: {row['area_name']}</p>
                     </div>
                     """, unsafe_allow_html=True)
 else:
