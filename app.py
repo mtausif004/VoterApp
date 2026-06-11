@@ -4,13 +4,11 @@ import sqlite3
 import pypdf
 import re
 
-# ডাটাবেজ ফাইল নেম
 DB_NAME = "voter_database.db"
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    # pdf_filename কলাম যুক্ত করা হয়েছে সোর্স ট্র্যাক করার জন্য
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS voters (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,28 +27,29 @@ def init_db():
     conn.commit()
     conn.close()
 
-# ভাঙা বাংলা টেক্সট ও ফন্ট এনকোডিং ঠিক করার উন্নত মেথড
 def clean_text(text):
     if not text:
         return ""
-    # পিডিএফ এক্সট্র্যাকশনের সময় হওয়া কমন ভুলগুলো ঠিক করা
+    # পিডিএফের ভাঙা ফন্ট ও এনকোডিং ঠিক করার জন্য ম্যাপিং
     replacements = {
         "Ïভাটার": "ভোটার", "িপতা": "পিতা", "িঠকানা": "ঠিকানা",
-        "Ïপশা": "پেশা", "জĥ তািরخ": "জন্ম তারিখ", "জĥ তািরখ": "জন্ম তারিখ",
-        "জহ তািরখ": "জন্ম তারিখ", "গৃিহনী": "গৃহিনী", "Řিমক": "শ্রমিক",
-        "চÿåাম": "চট্টগ্রাম", "মধË": "মধ্য", "এওিচয়া": "এওচিয়া",
-        "সাতকািনয়া": "সাতকানিয়া", "ÏমাছাŇৎ": "মোসাম্মৎ", "ÏমাহাŇদ": "মোহাম্মদ"
+        "Ïপশা": "পেশা", "জĥ তািরخ": "জন্ম তারিখ", "জĥ তািরখ": "জন্ম তারিখ",
+        "জহ তািরখ": "জন্ম তারিখ", "গৃিহনী": "गृहिनी", "গৃিহণী": "গৃহিনী", "Řิมক": "শ্রমিক", "Řিমক,": "শ্রমিক,",
+        "চÿåাম": "চট্টগ্রাম", " মধË": "মধ্য", "এওিচয়া": "এওচিয়া",
+        "সাতকািনয়া": "সাতকানিয়া", "ÏমাছাŇৎ": "মোসাম্মৎ", "ÏমাহাŇদ": "মোহাম্মদ",
+        "Ïবগম": "বেগম", "আিńয়া": "আছিয়া", "হািববুর": "হাবিবুর", "ſƁĨাহার": "জেবুন্নাহার",
+        "ভাটার": "ভোটার", "মাতা:": "মাতা:", "পিতা:": "পিতা:"
     }
     for broken, correct in replacements.items():
         text = text.replace(broken, correct)
+    
+    # অপ্রয়োজনীয় ক্যারেক্টার ও অতিরিক্ত স্পেস ক্লিন করা
+    text = re.sub(r'[^\w\s\d/.,:-]', '', text)
     return text.strip()
 
-# পিডিএফ থেকে ডাটা রিড করে ডাটাবেজে সেভ করার ফাংশন
 def process_pdf(uploaded_file):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    
-    # ফাইলের আসল নাম সংরক্ষণ
     filename = uploaded_file.name
     
     reader = pypdf.PdfReader(uploaded_file)
@@ -60,21 +59,14 @@ def process_pdf(uploaded_file):
         if text:
             full_text += text + "\n"
             
-    # ভোটার এলাকার নাম ডিটেক্ট করা
-    area_match = re.search(r"ভোটার এলাকার নাম:\s*([^\n\r]+)", full_text)
-    if not area_match:
-        area_match = re.search(r"এলাকার নাম:\s*([^\n\r]+)", full_text)
-    
-    area_name = area_match.group(1).strip() if area_match else "অজানা এলাকা"
+    # ভোটার এলাকা বের করা
+    area_match = re.search(r"(?:ভোটার এলাকার নাম|এলাকার নাম):\s*([^\n\r]+)", full_text)
+    area_name = area_match.group(1).strip() if area_match else "মধ্য এওচিয়া"
     area_name = clean_text(area_name)
 
-    # রেগুলার এক্সপ্রেশন প্যাটার্ন (বাংলা ও ভাঙা এনকোডিং দুইটাই সাপোর্ট করবে)
-    # প্যাটার্ন ১: ভাঙা এনকোডিং টেক্সট এর জন্য
-    matches = re.findall(r"(\d{4})\.\s*নাম:\s*(.*?)\s*ভোটার নং:\s*(\d+).*?িপতা:\s*(.*?)\s*মাতা:\s*(.*?)\s*.*?পেশা:\s*(.*?),\s*জ[ĥহ] তাির[খخ]:\s*([\d/]+)\s*.*?িঠকানা:\s*(.*?)(?=\s*\d{4}\.\s*নাম:|$)", full_text, re.DOTALL)
-    
-    # প্যাটার্ন ২: যদি টেক্সট একদম শুদ্ধ বাংলায় থাকে (ব্যাকআপ)
-    if not matches:
-        matches = re.findall(r"(\d{4})\.\s*নাম:\s*(.*?)\s*ভোটার নং:\s*(\d+).*?পিতা:\s*(.*?)\s*মাতা:\s*(.*?)\s*পেশা:\s*(.*?),\s*জন্ম তারিখ:\s*([\d/]+)\s*ঠিকানা:\s*(.*?)(?=\s*\d{4}\.\s*নাম:|$)", full_text, re.DOTALL)
+    # ভোটারদের ব্লক খোঁজার জন্য শক্তিশালী রেগুলার এক্সপ্রেশন (বাংলা ও ভাঙা দুই ফন্টই রিড করবে)
+    pattern = r"(\d{4})\.\s*নাম:\s*(.*?)\s*(?:ভোটার নং|Ïভাটার নং):\s*(\d+)\s*(?:পিতা|িপতা):\s*(.*?)\s*(?:মাতা|ماتا):\s*(.*?)\s*(?:পেশা|Ïপশা):\s*(.*?),\s*(?:জন্ম তারিখ|জĥ তািরখ|জĥ তািরخ):\s*([\d/]+)\s*(?:ঠিকানা|িঠকানা):\s*(.*?)(?=\s*\d{4}\.\s*নাম:|$)"
+    matches = re.findall(pattern, full_text, re.DOTALL)
 
     voters_added = 0
     for match in matches:
@@ -87,12 +79,12 @@ def process_pdf(uploaded_file):
         dob = match[6].strip()
         address = clean_text(match[7])
         
-        # একই ভোটার নম্বর ডাটাবেজে অলরেডি আছে কিনা চেক (ডুপ্লিকেট এড়ানো)
+        # ডুপ্লিকেট চেক
         cursor.execute("SELECT id FROM voters WHERE voter_no = ?", (voter_no,))
         if not cursor.fetchone():
             cursor.execute('''
                 INSERT INTO voters (serial_no, name, voter_no, father_name, mother_name, profession, dob, address, area_name, pdf_filename)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (serial_no, name, voter_no, father_name, mother_name, profession, dob, address, area_name, filename))
             voters_added += 1
             
@@ -100,12 +92,12 @@ def process_pdf(uploaded_file):
     conn.close()
     return voters_added, area_name
 
-# --- Streamlit UI ড্যাশবোর্ড ---
+# --- Streamlit UI ---
 st.set_page_config(page_title="স্মার্ট ভোটার ডাটাবেজ", layout="wide")
 init_db()
 
 st.title("🎯 ভোটার ডিরেক্টরি ম্যানেজার ও স্মার্ট সার্চ")
-st.write("পিডিএফ আপলোড করুন। আপনার ডাটা সরাসরি `voter_database.db` ফাইলে চিরস্থায়ীভাবে সোর্স ফাইল নেমসহ সংরক্ষিত থাকবে।")
+st.write("বামপাশের সাইডবার থেকে আপনার ভোটার তালিকার পিডিএফ ফাইলটি আপলোড করুন।")
 
 # সাইডবার কন্ট্রোল
 with st.sidebar:
@@ -120,7 +112,6 @@ with st.sidebar:
                     st.success(f"সফল: {f.name} ➡️ {added} জন নতুন ভোটার যুক্ত!")
                     
     st.markdown("---")
-    # ডাটাবেজের বর্তমান অবস্থা দেখার জন্য
     conn = sqlite3.connect(DB_NAME)
     total_count = conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0]
     unique_files = conn.execute("SELECT DISTINCT pdf_filename FROM voters").fetchall()
@@ -148,12 +139,12 @@ with col2:
     search_father = st.text_input("পিতার নাম")
 with col3:
     search_address = st.text_input("ঠিকানা/গ্রাম")
-    search_pdf = st.text_input("পিডিএফ ফাইলের নাম (যেমন: 152400...)")
+    search_pdf = st.text_input("পিডিএফ ফাইলের নাম")
 with col4:
     search_prof = st.text_input("পেশা")
     search_dob = st.text_input("জন্ম তারিখ")
 
-# ডাটাবেজ থেকে কুয়েরি তৈরি করা
+# ডাটাবেজ কোয়েরি
 conn = sqlite3.connect(DB_NAME)
 query = "SELECT serial_no, name, voter_no, father_name, mother_name, profession, dob, address, area_name, pdf_filename FROM voters WHERE 1=1"
 params = []
@@ -170,15 +161,12 @@ if search_dob: query += " AND dob LIKE ?"; params.append(f"%{search_dob}%")
 df = pd.read_sql_query(query, conn, params=params)
 conn.close()
 
-# ফলাফল প্রদর্শন
 st.markdown("---")
 if not df.empty:
     st.success(f"🔍 অনুসন্ধানে মোট {len(df)} জন ভোটারের তথ্য পাওয়া গেছে।")
     
-    # সার্চ করা ডাটাকে CSV হিসেবে ডাউনলোড করার ডাইনামিক নামকরণ
     default_csv_name = "filtered_voter_data.csv"
     if search_pdf:
-        # যদি নির্দিষ্ট কোনো পিডিএফ সার্চ করেন, তবে এক্সেল ফাইলের নামও সেই পিডিএফের নামে হবে
         default_csv_name = f"{search_pdf.replace('.pdf', '')}.csv"
         
     csv_data = df.to_csv(index=False).encode('utf-8')
@@ -189,7 +177,7 @@ if not df.empty:
         mime='text/csv',
     )
     
-    st.write("### 🪪 ভোটার আইডি কার্ডসমূহ:")
+    st.write("### 🪪 ভোটার আইডিカードসমূহ:")
     
     for i in range(0, len(df), 2):
         card_cols = st.columns(2)
@@ -212,4 +200,4 @@ if not df.empty:
                     </div>
                     """, unsafe_allow_html=True)
 else:
-    st.info("কোনো ডাটা পাওয়া যায়নি। অনুগ্রহ করে ফিল্টার চেক করুন অথবা বামপাশের সাইডবার থেকে পিডিএফ আপলোড করুন।")
+    st.info("কোনো ডাটা পাওয়া যায়নি। অনুগ্রহ করে বামপাশের সাইডবার থেকে পিডিএফ আপলোড করুন বা সঠিক ফিল্টার ইনপুট দিন।")
